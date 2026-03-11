@@ -5,10 +5,16 @@ int main(void)
     uart_init();
 
 #ifdef QEMU
-    uart_puts("Running on QEMU\n");
+    const char *msg = "Running on QEMU\n";
 #else
-    uart_puts("Running on BeagleBone\n");
+    const char *msg = "Running on BeagleBone\n";
 #endif
 
-    while (1);
+    while (1)
+    {
+        uart_puts(msg);
+
+        /* small delay so the output is readable */
+        for (volatile int i = 0; i < 1000000; i++);
+    }
 }

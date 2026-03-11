@@ -11,23 +11,35 @@ CFLAGS=-ffreestanding -nostdlib -nostartfiles -I$(INC) -g
 
 OBJS=$(BUILD)/start.o $(BUILD)/main.o $(BUILD)/uart.o
 
+# -------------------------
 # QEMU build
+# -------------------------
 qemu: CFLAGS+=-DQEMU -mcpu=arm926ej-s
+qemu: START=$(SRC)/start_qemu.s
 qemu: LINKER=linker_qemu.ld
 qemu: clean build $(BUILD)/kernel.elf
 	qemu-system-arm -M versatilepb -cpu arm926 -nographic -kernel $(BUILD)/kernel.elf
 
-# Beagle build
+# -------------------------
+# BeagleBone build + flash
+# -------------------------
 beagle: CFLAGS+=-mcpu=cortex-a8
+beagle: START=$(SRC)/start_beagle.s
 beagle: LINKER=linker_beagle.ld
-beagle: clean build $(BUILD)/kernel.bin
-	@echo "Load build/kernel.bin at 0x402F0400"
+beagle: clean build $(BUILD)/kernel.bin flash
 
+flash:
+	@echo "Sending loady command to BeagleBone..."
+	python3 flash_bbb.py
+
+# -------------------------
+# Build rules
+# -------------------------
 build:
 	mkdir -p $(BUILD)
 
 $(BUILD)/start.o:
-	$(AS) $(SRC)/start.s -o $(BUILD)/start.o
+	$(CC) -c $(START) $(CFLAGS) -o $(BUILD)/start.o
 
 $(BUILD)/main.o:
 	$(CC) -c $(SRC)/main.c $(CFLAGS) -o $(BUILD)/main.o

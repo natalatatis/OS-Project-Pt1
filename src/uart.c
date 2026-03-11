@@ -4,18 +4,16 @@
 
 void uart_putc(char c)
 {
-
 #ifdef QEMU
+    while (GET32(UART_FR) & UART_FR_TXFF);
 
-    while (GET32(UART_FR) & (1 << 5));   // TXFF
+    if (c == '\n')
+        PUT32(UART_DR, '\r');
 
     PUT32(UART_DR, c);
-
 #else
-
     while ((GET32(UART_LSR) & UART_LSR_THRE) == 0);
     PUT32(UART_THR, c);
-
 #endif
 }
 
