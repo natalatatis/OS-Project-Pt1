@@ -1,5 +1,4 @@
 CC=arm-none-eabi-gcc
-AS=arm-none-eabi-as
 LD=arm-none-eabi-ld
 OBJCOPY=arm-none-eabi-objcopy
 
@@ -11,26 +10,31 @@ CFLAGS=-ffreestanding -nostdlib -nostartfiles -I$(INC) -g
 
 OBJS=$(BUILD)/start.o $(BUILD)/main.o $(BUILD)/uart.o
 
+.PHONY: qemu beagle flash clean build
+
 # -------------------------
-# QEMU build
+# QEMU
 # -------------------------
-qemu: CFLAGS+=-DQEMU -mcpu=arm926ej-s
-qemu: START=$(SRC)/start_qemu.s
-qemu: LINKER=linker_qemu.ld
-qemu: clean build $(BUILD)/kernel.elf
+qemu: clean
+	$(MAKE) START=$(SRC)/start_qemu.s LINKER=linker_qemu.ld CPU="-DQEMU -mcpu=arm926ej-s" build_qemu
 	qemu-system-arm -M versatilepb -cpu arm926 -nographic -kernel $(BUILD)/kernel.elf
 
+build_qemu: build $(BUILD)/kernel.elf
+
 # -------------------------
-# BeagleBone build + flash
+# BeagleBone
 # -------------------------
-beagle: CFLAGS+=-mcpu=cortex-a8
-beagle: START=$(SRC)/start_beagle.s
-beagle: LINKER=linker_beagle.ld
-beagle: clean build $(BUILD)/kernel.bin flash
+beagle: clean
+	$(MAKE) START=$(SRC)/start_beagle.s LINKER=linker_beagle.ld CPU="-mcpu=cortex-a8" build_beagle
+	$(MAKE) flash
+
+build_beagle: build $(BUILD)/kernel.bin
 
 flash:
-	@echo "Sending loady command to BeagleBone..."
-	python3 flash_bbb.py
+	@echo "================================"
+	@echo " Deploying to BeagleBone Black"
+	@echo "================================"
+	./deploy_beagle.sh
 
 # -------------------------
 # Build rules
@@ -39,15 +43,15 @@ build:
 	mkdir -p $(BUILD)
 
 $(BUILD)/start.o:
-	$(CC) -c $(START) $(CFLAGS) -o $(BUILD)/start.o
+	$(CC) -c $(START) $(CFLAGS) $(CPU) -o $@
 
-$(BUILD)/main.o:
-	$(CC) -c $(SRC)/main.c $(CFLAGS) -o $(BUILD)/main.o
+$(BUILD)/main.o: $(SRC)/main.c
+	$(CC) -c $< $(CFLAGS) $(CPU) -o $@
 
-$(BUILD)/uart.o:
-	$(CC) -c $(SRC)/uart.c $(CFLAGS) -o $(BUILD)/uart.o
+$(BUILD)/uart.o: $(SRC)/uart.c
+	$(CC) -c $< $(CFLAGS) $(CPU) -o $@
 
-$(BUILD)/kernel.elf: $(BUILD)/start.o $(BUILD)/main.o $(BUILD)/uart.o
+$(BUILD)/kernel.elf: $(OBJS)
 	$(LD) -T $(LINKER) $^ -o $@
 
 $(BUILD)/kernel.bin: $(BUILD)/kernel.elf
