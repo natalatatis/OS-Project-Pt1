@@ -77,8 +77,7 @@ echo "go $LOAD_ADDR" >&3
 
 echo
 echo "================================"
-echo " Program running. UART output:"
-echo " Ctrl+C to exit"
+echo " Program running. UART output:"  
 echo "================================"
 echo
 
