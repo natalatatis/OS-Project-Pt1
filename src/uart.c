@@ -30,6 +30,5 @@ void uart_puts(const char *s)
 
 void uart_init(void)
 {
-    // For simplicity, we assume the UART is already initialized by the bootloader.
-    // In a real implementation, you would configure baud rate, data bits, stop bits, etc.
+   
 }

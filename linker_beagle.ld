@@ -4,22 +4,13 @@ SECTIONS
 {
     . = 0x82000000;
 
-    /* Vector table */
-    .vectors : {
-        *(.vectors)
-    }
+    .vectors : { *(.vectors) }
 
-    .text : {
-        *(.text*)
-    }
+    .text : { *(.text*) }
 
-    .rodata : {
-        *(.rodata*)
-    }
+    .rodata : { *(.rodata*) }
 
-    .data : {
-        *(.data*)
-    }
+    .data : { *(.data*) }
 
     .bss : {
         __bss_start__ = .;
@@ -28,7 +19,8 @@ SECTIONS
         __bss_end__ = .;
     }
 
-    /* Define stack  */
-    . = ALIGN(8);
-    __os_stack_top = . + 0x2000;  /* 8 KB stack */
+    
+    . = 0x82010000;
+
+    __os_stack_top = 0x82012000;  /* 8KB stack */
 }

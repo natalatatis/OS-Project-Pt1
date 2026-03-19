@@ -20,6 +20,8 @@
 #define INTC_MIR_CLEAR2  (INTCPS_BASE + 0xC8)    // Interrupt Mask Clear Register 2
 #define INTC_CONTROL     (INTCPS_BASE + 0x48)    // Interrupt Controller Control
 #define INTC_ILR68       (INTCPS_BASE + 0x110)   // Interrupt Line Register 68
+#define INTC_SYSCONFIG   (INTCPS_BASE + 0x10)   // Interrupt Sys config
+#define INTC_SYSSTATUS   (INTCPS_BASE + 0x14) // Interrupt Sys status
 
 // Clock Manager base address
 #define CM_PER_BASE      0x44E00000
@@ -83,95 +85,4 @@ void uart_putnum(unsigned int num) {
         uart_putc(buf[--i]);
     }
     uart_putc('\n');
-}
-
-// ============================================================================
-// Timer Functions
-// ============================================================================
-
-// TODO: Implement timer initialization
-// This function should:
-// 1. Enable the timer clock (CM_PER_TIMER2_CLKCTRL = 0x2)
-// 2. Unmask IRQ 68 in the interrupt controller (INTC_MIR_CLEAR2)
-// 3. Configure interrupt priority (INTC_ILR68 = 0x0)
-// 4. Stop the timer (TCLR = 0)
-// 5. Clear any pending interrupts (TISR = 0x7)
-// 6. Set the load value for 2 seconds (TLDR = 0xFE91CA00)
-// 7. Set the counter to the same value (TCRR = 0xFE91CA00)
-// 8. Enable overflow interrupt (TIER = 0x2)
-// 9. Start timer in auto-reload mode (TCLR = 0x3)
-void timer_init(void) {
-    // 1. Enable timer2 clock
-    PUT32(CM_PER_TIMER2_CLKCTRL, 0x2);
-
-    // 2. Unmask IRQ 68 (Timer2 interrupt)
-    PUT32(INTC_MIR_CLEAR2, (1 << (68 - 64)));
-
-    // 3. Set interrupt priority (IRQ mode, priority 0)
-    PUT32(INTC_ILR68, 0x0);
-
-    // 4. Stop timer
-    PUT32(TCLR, 0x0);
-
-    // 5. Clear pending interrupts
-    PUT32(TISR, 0x7);
-
-    // 6. Load 2-second value (24 MHz clock)
-    PUT32(TLDR, 0xFE91CA00);
-    PUT32(TCRR, 0xFE91CA00);
-
-    // 7. Enable overflow interrupt
-    PUT32(TIER, 0x2);
-
-    // 8. Start timer in auto-reload mode
-    PUT32(TCLR, 0x3);
-
-    os_write("Timer initialized\n");
-}
-
-// TODO: Implement timer interrupt handler
-// This function should:
-// 1. Clear the timer interrupt flag (TISR = 0x2)
-// 2. Acknowledge the interrupt to the controller (INTC_CONTROL = 0x1)
-// 3. Print "Tick\n" via UART
-void timer_irq_handler(void) {
-    // 1. Clear overflow interrupt
-    PUT32(TISR, 0x2);
-
-    // 2. Acknowledge interrupt controller
-    PUT32(INTC_CONTROL, 0x1);
-
-    // 3. Print message
-    os_write("Tick\n");
-}
-
-// ============================================================================
-// Main Program
-// ============================================================================
-
-// Simple random number generator (Linear Congruential Generator)
-static unsigned int seed = 12345;
-
-unsigned int rand(void) {
-    seed = (seed * 1103515245 + 12345) & 0x7fffffff;
-    return seed;
-}
-
-int main(void) {
-
-    os_write("Starting...\n");
-
-    timer_init();
-
-    os_write("Enabling interrupts...\n");
-    enable_irq();
-
-    while (1) {
-        unsigned int random_num = rand() % 1000;
-        uart_putnum(random_num);
-
-        for (volatile int i = 0; i < 1000000; i++);
-    }
-
-    return 0;
 }

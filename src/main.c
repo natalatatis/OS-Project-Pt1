@@ -18,3 +18,8 @@ int main(void)
         for (volatile int i = 0; i < 1000000; i++);
     }
 }
+
+//just for now 
+void timer_irq_handler() {
+    // nothing
+}
