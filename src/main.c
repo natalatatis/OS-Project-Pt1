@@ -1,9 +1,7 @@
-#include "uart.h"
+#include "stdio.h"
 
 int main(void)
 {
-    uart_init();
-
 #ifdef QEMU
     const char *msg = "Running on QEMU\n";
 #else
@@ -12,14 +10,14 @@ int main(void)
 
     while (1)
     {
-        uart_puts(msg);
+        PRINT(msg);
 
-        /* small delay so the output is readable */
+        // small delay so output is readable
         for (volatile int i = 0; i < 1000000; i++);
     }
 }
 
-//just for now 
+// Temporary (until real interrupt logic)
 void timer_irq_handler() {
-    // nothing
+    // nothing for now
 }

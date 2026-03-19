@@ -4,12 +4,16 @@ OBJCOPY=arm-none-eabi-objcopy
 
 SRC=src
 OS=OS
+LIB=Library
 INC=include
 BUILD=build
 
-CFLAGS=-ffreestanding -nostdlib -nostartfiles -I$(INC) -g
+CFLAGS=-ffreestanding -nostdlib -nostartfiles -I$(INC) -I$(LIB) -g
 
-OBJS=$(BUILD)/start.o $(BUILD)/main.o $(BUILD)/uart.o
+OBJS=$(BUILD)/start.o \
+     $(BUILD)/main.o \
+     $(BUILD)/uart.o \
+     $(BUILD)/stdio.o
 
 .PHONY: qemu beagle flash clean build
 
@@ -17,7 +21,7 @@ OBJS=$(BUILD)/start.o $(BUILD)/main.o $(BUILD)/uart.o
 # QEMU
 # -------------------------
 qemu: clean
-	$(MAKE) START="$(OS)/root_qemu.s" LINKER=linker_qemu.ld CPU="-DQEMU -mcpu=arm926ej-s" build_qemu
+	$(MAKE) START="$(OS)/root_qemu.s" LINKER=$(OS)/linker_qemu.ld CPU="-DQEMU -mcpu=arm926ej-s" build_qemu
 	qemu-system-arm -M versatilepb -cpu arm926 -nographic -kernel $(BUILD)/kernel.elf
 
 build_qemu: build $(BUILD)/kernel.elf
@@ -26,7 +30,7 @@ build_qemu: build $(BUILD)/kernel.elf
 # BeagleBone
 # -------------------------
 beagle: clean
-	$(MAKE) START="$(OS)/root_beagle.s" LINKER=linker_beagle.ld CPU="-mcpu=cortex-a8" build_beagle
+	$(MAKE) START="$(OS)/root_beagle.s" LINKER=$(OS)/linker_beagle.ld CPU="-mcpu=cortex-a8" build_beagle
 	$(MAKE) flash
 
 build_beagle: build $(BUILD)/kernel.bin
@@ -47,11 +51,15 @@ build:
 $(BUILD)/start.o:
 	$(CC) -c $(START) $(CFLAGS) $(CPU) -o $@
 
-# C files (from src/)
+# C files (src/)
 $(BUILD)/main.o: $(SRC)/main.c
 	$(CC) -c $< $(CFLAGS) $(CPU) -o $@
 
 $(BUILD)/uart.o: $(SRC)/uart.c
+	$(CC) -c $< $(CFLAGS) $(CPU) -o $@
+
+# Library (stdio)
+$(BUILD)/stdio.o: $(LIB)/stdio.c
 	$(CC) -c $< $(CFLAGS) $(CPU) -o $@
 
 # Link
