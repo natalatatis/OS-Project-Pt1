@@ -3,10 +3,10 @@
 
 #ifdef QEMU
 
-//--------------------------------
-// QEMU VersatilePB
-//--------------------------------
 
+// QEMU VersatilePB
+
+// UART
 #define UART0_BASE 0x101F1000
 
 #define UART_DR (UART0_BASE + 0x00)
@@ -14,6 +14,33 @@
 
 #define UART_FR_TXFF (1 << 5)
 #define UART_FR_RXFE (1 << 4)
+
+
+
+// TIMER (SP804)
+
+#define TIMER0_BASE 0x101E2000
+
+#define TIMER_LOAD   (TIMER0_BASE + 0x00)
+#define TIMER_VALUE  (TIMER0_BASE + 0x04)
+#define TIMER_CTRL   (TIMER0_BASE + 0x08)
+#define TIMER_INTCLR (TIMER0_BASE + 0x0C)
+#define TIMER_RIS    (TIMER0_BASE + 0x10)
+#define TIMER_MIS    (TIMER0_BASE + 0x14)
+
+
+
+// VIC (Interrupt Controller)
+
+#define VIC_BASE        0x10140000
+
+#define VIC_IRQENABLE   (VIC_BASE + 0x10)
+#define VIC_INTENCLEAR  (VIC_BASE + 0x14)
+#define VIC_VECTADDR    (VIC_BASE + 0x30)
+
+
+// Timer IRQ number (Timer0 = IRQ 4 in VersatilePB)
+#define TIMER0_IRQ 4
 
 #else
 
@@ -23,10 +50,10 @@
 
 // UART
 #define UART0_BASE     0x44E09000
-#define UART_THR       (UART0_BASE + 0x00)  // Transmit Holding Register
-#define UART_LSR       (UART0_BASE + 0x14)  // Line Status Register
-#define UART_LSR_THRE  0x20                  // Transmit Holding Register Empty
-#define UART_LSR_RXFE  0x10                  // Receive FIFO Empty
+#define UART_THR       (UART0_BASE + 0x00)  
+#define UART_LSR       (UART0_BASE + 0x14)  
+#define UART_LSR_THRE  0x20                  
+#define UART_LSR_RXFE  0x10                  
 
 // TIMER (DMTimer2)
 #define DMTIMER2_BASE 0x48040000
