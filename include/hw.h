@@ -27,6 +27,7 @@
 #define TIMER_INTCLR (TIMER0_BASE + 0x0C)
 #define TIMER_RIS    (TIMER0_BASE + 0x10)
 #define TIMER_MIS    (TIMER0_BASE + 0x14)
+#define TIMER_BGLOAD (TIMER0_BASE + 0x18)
 
 
 
@@ -38,6 +39,9 @@
 #define VIC_INTENCLEAR  (VIC_BASE + 0x14)
 #define VIC_VECTADDR    (VIC_BASE + 0x30)
 
+// Vectored interrupt slot 0 (NEW)
+#define VIC_VECTADDR0   (VIC_BASE + 0x100)
+#define VIC_VECTCNTL0   (VIC_BASE + 0x200)
 
 // Timer IRQ number (Timer0 = IRQ 4 in VersatilePB)
 #define TIMER0_IRQ 4

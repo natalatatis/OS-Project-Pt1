@@ -1,4 +1,4 @@
-#include "os.h"
+#include "mem.h"
 #include "hw.h"
 
 
@@ -8,6 +8,11 @@ void uart_putc(char c) {
 #ifdef QEMU
     // Wait until TX not full
     while (GET32(UART_FR) & UART_FR_TXFF);
+
+
+    if (c == '\n')
+        PUT32(UART_DR, '\r');
+
     PUT32(UART_DR, c);
 
 #else

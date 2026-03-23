@@ -1,5 +1,5 @@
 //Prints numbers from 0 to 9 with a delay in between
-#include "../lib/stdio.h"
+#include "../Library/stdio.h"
 
 static void delay(volatile unsigned int count){
     while(count--);

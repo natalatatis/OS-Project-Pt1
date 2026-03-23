@@ -25,14 +25,30 @@ vector_table:
 
 // Reset Handler
 reset_handler:
-    cpsid i         @ Disable interrupts
-    // Set CPU to SVC mode
+    cpsid i                 @ Disable interrupts
+
+    // Setup SVC stack
     mrs r0, cpsr
-    bic r0, r0, #0x1F
-    orr r0, r0, #0x13   @ SVC mode
+    bic r0, r0, #0x1F       @ Clear mode bits
+    orr r0, r0, #0x13       @ SVC mode
     msr cpsr_c, r0
 
-    // Set stack pointer
+    ldr sp, =__os_stack_top  @ Load SVC stack pointer
+
+    // Setup IRQ stack
+    mrs r0, cpsr
+    bic r0, r0, #0x1F       @ Clear mode bits
+    orr r0, r0, #0x12       @ IRQ mode
+    msr cpsr_c, r0
+
+    ldr sp, =__irq_stack_top @ Load IRQ stack pointer
+
+    // Back to SVC mode for main
+    mrs r0, cpsr
+    bic r0, r0, #0x1F
+    orr r0, r0, #0x13
+    msr cpsr_c, r0
+
     ldr sp, =__os_stack_top
 
     // Clear BSS
@@ -52,7 +68,8 @@ clear_bss:
     ldr r0, =vector_table
     mcr p15, 0, r0, c12, c0, 0
 
-    // Jump to C
+
+    // Jump to C main
     bl main
 
 hang:
@@ -75,7 +92,7 @@ irq_handler:
     sub lr, lr, #4
     stmfd sp!, {r0-r3, lr}  @ Save registers and return address
     bl timer_irq_handler     @ Call the timer IRQ handler
-    ldmfd sp!, {r0-r12, lr}  @ Restore context
+    ldmfd sp!, {r0-r3, lr}  @ Restore context
     subs pc, lr, #04     @ Return from interrupt
 
 fiq_handler:

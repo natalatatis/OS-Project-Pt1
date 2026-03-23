@@ -23,4 +23,5 @@ SECTIONS
     . = 0x82010000;
 
     __os_stack_top = 0x82012000;  /* 8KB stack */
+    __irq_stack_top = 0x82011000; /* 4KB IRQ stack  */
 }
