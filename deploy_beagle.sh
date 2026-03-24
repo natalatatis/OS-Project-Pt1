@@ -1,20 +1,28 @@
 #!/bin/bash
-# Deploy kernel to BeagleBone via YMODEM
+# Deploy OS + P1 + P2 to BeagleBone via YMODEM
 
 set -e
 
 # ---- Configuration ----
 SERIAL_PORT="${SERIAL_PORT:-/dev/cu.usbserial-AB6ZOWNT}"
 BAUD_RATE=115200
-LOAD_ADDR=0x82000000
-BINARY=build/kernel.bin
 
-# ---- Check binary ----
-if [ ! -f "$BINARY" ]; then
-    echo "ERROR: $BINARY not found."
-    echo "Run: make beagle"
-    exit 1
-fi
+OS_ADDR=0x82000000
+P1_ADDR=0x82100000
+P2_ADDR=0x82200000
+
+OS_BIN=build/kernel.bin
+P1_BIN=build/p1.bin
+P2_BIN=build/p2.bin
+
+# ---- Check binaries ----
+for f in "$OS_BIN" "$P1_BIN" "$P2_BIN"; do
+    if [ ! -f "$f" ]; then
+        echo "ERROR: $f not found."
+        echo "Run: make beagle"
+        exit 1
+    fi
+done
 
 # ---- Check YMODEM tool ----
 if command -v lsb &> /dev/null; then
@@ -30,9 +38,10 @@ else
 fi
 
 echo "================================"
-echo "Binary:  $BINARY"
-echo "Serial:  $SERIAL_PORT"
-echo "Address: $LOAD_ADDR"
+echo "OS:  $OS_BIN  -> $OS_ADDR"
+echo "P1:  $P1_BIN  -> $P1_ADDR"
+echo "P2:  $P2_BIN  -> $P2_ADDR"
+echo "Serial: $SERIAL_PORT"
 echo "================================"
 echo
 
@@ -54,30 +63,41 @@ kill $SPAM_PID 2>/dev/null || true
 wait $SPAM_PID 2>/dev/null || true
 sleep 0.5
 
-# ---- Send loady ----
-echo "Sending loady $LOAD_ADDR..."
-echo "loady $LOAD_ADDR" >&3
-sleep 1
+# ---- Helper function to send a binary ----
+send_image () {
+    local FILE=$1
+    local ADDR=$2
 
-# Drain U-Boot output
-cat <&3 > /dev/null &
-DRAIN_PID=$!
-sleep 4
-kill $DRAIN_PID 2>/dev/null || true
-wait $DRAIN_PID 2>/dev/null || true
+    echo
+    echo ">>> Loading $FILE to $ADDR"
+    echo "loady $ADDR" >&3
+    sleep 1
 
-# ---- Send binary ----
-echo "Sending $BINARY via YMODEM..."
-$SB_CMD "$BINARY" <&3 >&3
-sleep 1
+    # Drain output
+    cat <&3 > /dev/null &
+    DRAIN_PID=$!
+    sleep 3
+    kill $DRAIN_PID 2>/dev/null || true
+    wait $DRAIN_PID 2>/dev/null || true
 
-# ---- Boot program ----
-echo "Sending go $LOAD_ADDR..."
-echo "go $LOAD_ADDR" >&3
+    echo "Sending $FILE via YMODEM..."
+    $SB_CMD "$FILE" <&3 >&3
+    sleep 1
+}
+
+# ---- Send all images ----
+send_image "$OS_BIN" "$OS_ADDR"
+send_image "$P1_BIN" "$P1_ADDR"
+send_image "$P2_BIN" "$P2_ADDR"
+
+# ---- Boot OS ----
+echo
+echo ">>> Starting OS at $OS_ADDR"
+echo "go $OS_ADDR" >&3
 
 echo
 echo "================================"
-echo " Program running. UART output:"  
+echo " System running. UART output:"
 echo "================================"
 echo
 

@@ -5,7 +5,7 @@ static void delay(volatile unsigned int count){
     while(count--);
 }
 
-int main(void){
+int p2_main(void){
     char c = 'a';
 
     while(1){

@@ -1,7 +1,18 @@
+#include <stdint.h>
+#include <stddef.h>  
 #include "os.h"
+#include "pcb.h"
+#include "mem.h"
 
-extern void PUT32(uint32_t addr, uint32_t value);
-extern uint32_t GET32(uint32_t addr);
+#define NUM_PROCS 2
+
+
+
+pcb_t pcb_array[NUM_PROCS]; //P1 and P2
+pcb_t *current_proc = NULL;
+pcb_t *next_proc = NULL;
+
+
 extern void enable_irq(void);
 
 typedef enum {
@@ -276,6 +287,20 @@ static void intc_eoi(void) {
     }
 }
 
+// PCB Setup
+static void setup_initial_stack(pcb_t *pcb, unsigned int stack_top,
+                                 unsigned int entry_point, int pid) {
+    for (int i = 0; i < 13; i++) pcb->registers[i] = 0;
+
+    pcb->pid   = pid;
+    pcb->sp    = stack_top;   // SVC SP for this process
+    pcb->pc    = entry_point; // where to resume 
+    pcb->lr    = entry_point; // SVC LR 
+    pcb->cpsr  = 0x13;        // SVC mode, IRQs enabled
+    pcb->state = READY;
+}
+
+
 /* =========================
  * Main / IRQ
  * ========================= */
@@ -306,25 +331,67 @@ int main(void) {
 
     intc_init();
     timer_init();
-
     enable_irq();
 
     os_uart_puts("IRQs enabled\n");
 
+    //  PCB Initialization 
+    #define P1_ENTRY      0x82100000u
+    #define P2_ENTRY      0x82200000u
+    #define P1_STACK_TOP  0x82112000u
+    #define P2_STACK_TOP  0x82212000u
+
+    setup_initial_stack(&pcb_array[0], P1_STACK_TOP, P1_ENTRY, 1);
+    setup_initial_stack(&pcb_array[1], P2_STACK_TOP, P2_ENTRY, 2);
+
+    current_proc = &pcb_array[0];
+    current_proc->state = RUNNING;
+    next_proc = current_proc;
+
+    os_uart_puts("Starting first process...\n");
+
+    //  context restore 
+    __asm__ volatile (
+        "ldr r0, =next_proc      \n"
+        "ldr r0, [r0]            \n"
+
+        // Load CPSR into SPSR
+        "ldr r1, [r0, #68]       \n" // PCB_CPSR
+        "msr spsr_cxsf, r1       \n"
+
+        // Switch to SVC mode to restore SP/LR
+        "mrs r2, cpsr            \n"
+        "bic r3, r2, #0x1F       \n"
+        "orr r3, r3, #0x13       \n"
+        "msr cpsr_c, r3          \n"
+
+        "ldr sp, [r0, #4]        \n" // PCB_SP
+        "ldr lr, [r0, #12]       \n" // PCB_LR
+
+        // Back to IRQ mode
+        "msr cpsr_c, r2          \n"
+
+        // Load PC
+        "ldr lr, [r0, #8]        \n" // PCB_PC
+
+        // Jump 
+        "movs pc, lr             \n"
+    );
+
     while (1) {
-        delay(500000u);
+        __asm__("wfi");
     }
 
     return 0;
 }
 
 void timer_irq_handler(void) {
-    g_tick_count++;
-
     timer_ack();
     intc_eoi();
 
-    os_uart_puts("Tick ");
-    uart_put_dec(g_tick_count);
-    os_uart_puts("\n");
+    // Pick next process (round-robin)
+    next_proc = (current_proc->pid == 1) ? &pcb_array[1] : &pcb_array[0];
+
+    // Update current_proc for next tick
+    current_proc = next_proc;
 }

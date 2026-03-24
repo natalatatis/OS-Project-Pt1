@@ -5,7 +5,7 @@ static void delay(volatile unsigned int count){
     while(count--);
 }
 
-int main(void){
+int p1_main(void){
     int n = 0;
 
     while(1){

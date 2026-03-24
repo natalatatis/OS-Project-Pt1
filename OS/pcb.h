@@ -2,6 +2,16 @@
 #ifndef PCB_H
 #define PCB_H 
 
+// States
+typedef enum{
+    NEW,
+    READY, 
+    RUNNING,
+    SUSPENDED,
+    WAITING,
+    TERMINATED
+} proc_state_t;
+
 typedef struct PCB{
     // Process ID
     int pid;
@@ -16,7 +26,7 @@ typedef struct PCB{
     // Status register
     unsigned int cpsr;
     // State
-    int state;
+    proc_state_t state;
 
 } pcb_t;
 

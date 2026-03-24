@@ -1,4 +1,4 @@
-ENTRY(main)
+ENTRY(p2_main)
 
 SECTIONS
 {
