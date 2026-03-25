@@ -73,31 +73,9 @@ void os_uart_puts(const char *s) {
     }
 }
 
-/* Print a uint32 as 8 hex digits */
-static void print_hex(uint32_t v) {
-    static const char h[] = "0123456789ABCDEF";
-    int i;
-    os_uart_puts("0x");
-    for (i = 7; i >= 0; --i)
-        os_uart_putc(h[(v >> (i * 4)) & 0xF]);
-}
-
-void os_debug_dump_pcb(pcb_t *pcb) {
-    os_uart_puts("[first_launch] PC = ");
-    print_hex(pcb->pc);
-    os_uart_puts("\n");
-
-    os_uart_puts("[first_launch] SP = ");
-    print_hex(pcb->sp);
-    os_uart_puts("\n");
-
-    os_uart_puts("[first_launch] CPSR = ");
-    print_hex(pcb->cpsr);
-    os_uart_puts("\n");
-}
 
 
-
+// Function used to print adresses for debugging
 static void print_dec(uint32_t v) {
     char buf[12]; int i = 0;
     if (!v) { os_uart_putc('0'); return; }
@@ -121,14 +99,24 @@ static void watchdog_disable(void) {
  * ============================================================ */
 static void timer_init_beagle(void) {
     const hw_config_t *cfg = hw();
-    PUT32(cfg->timer_base + 0x38u, 0);
-    PUT32(cfg->timer_base + 0x28u, 0x2u);
-    PUT32(cfg->timer_base + 0x40u, 0xFF000000u);
-    PUT32(cfg->timer_base + 0x3Cu, 0xFF000000u);
-    PUT32(cfg->timer_base + 0x44u, 0x1u);
+
+    /* Disable timer */
+    PUT32(cfg->timer_base + 0x38u, 0x0);
+
+    /* Reset counter */
+    PUT32(cfg->timer_base + 0x3Cu, 0x0);
+
+    /* Load value for ~1 second (depends on clock ~24MHz) */
+    PUT32(cfg->timer_base + 0x40u, 0xFE000000u);
+    PUT32(cfg->timer_base + 0x3Cu, 0xFE000000u);
+
+    /* Enable overflow interrupt */
     PUT32(cfg->timer_base + 0x2Cu, 0x2u);
+
+    /* Start timer: auto-reload + start */
     PUT32(cfg->timer_base + 0x38u, 0x3u);
 }
+
 
 static void timer_init_qemu(void) {
     const hw_config_t *cfg = hw();
@@ -201,25 +189,6 @@ static void setup_initial_stack(pcb_t *pcb,
     pcb->state = READY;
 }
 
-/* ============================================================
- * Verify a memory region looks executable (non-zero word at base)
- * ============================================================ */
-static void verify_process_memory(const char *name, uint32_t base) {
-    uint32_t word0 = GET32(base);
-    uint32_t word1 = GET32(base + 4);
-    os_uart_puts(name);
-    os_uart_puts(" first words: ");
-    print_hex(word0);
-    os_uart_putc(' ');
-    print_hex(word1);
-    os_uart_putc('\n');
-
-    if (word0 == 0x00000000u && word1 == 0x00000000u) {
-        os_uart_puts("  WARNING: looks like zeros — not loaded!\n");
-    } else {
-        os_uart_puts("  OK: non-zero content found\n");
-    }
-}
 
 /* ============================================================
  * main
@@ -229,15 +198,7 @@ int main(void) {
 
     os_uart_puts("OS booting...\nPlatform: ");
     os_uart_puts(current_platform == PLATFORM_BEAGLE ? "BEAGLE\n" : "QEMU\n");
-
-    os_uart_puts("UART base : "); print_hex(hw()->uart_base);  os_uart_puts("\n");
-    os_uart_puts("Timer base: "); print_hex(hw()->timer_base); os_uart_puts("\n");
-    os_uart_puts("INTC base : "); print_hex(hw()->intc_base);  os_uart_puts("\n");
-
-    /* ---- Verify P1 and P2 are actually in RAM ---- */
-    os_uart_puts("\n--- Memory check ---\n");
-    verify_process_memory("P1 @ 0x82100000", P1_ENTRY);
-    verify_process_memory("P2 @ 0x82200000", P2_ENTRY);
+  
     os_uart_puts("--------------------\n\n");
 
     intc_init();
@@ -247,24 +208,12 @@ int main(void) {
     setup_initial_stack(&pcb_array[0], P1_STACK_TOP, P1_ENTRY, 1);
     setup_initial_stack(&pcb_array[1], P2_STACK_TOP, P2_ENTRY, 2);
 
-    os_uart_puts("PCB[0]: pid="); print_dec(pcb_array[0].pid);
-    os_uart_puts(" pc="); print_hex(pcb_array[0].pc);
-    os_uart_puts(" sp="); print_hex(pcb_array[0].sp);
-    os_uart_puts(" lr="); print_hex(pcb_array[0].lr);
-    os_uart_puts(" cpsr="); print_hex(pcb_array[0].cpsr);
-    os_uart_puts("\n");
-
-    os_uart_puts("PCB[1]: pid="); print_dec(pcb_array[1].pid);
-    os_uart_puts(" pc="); print_hex(pcb_array[1].pc);
-    os_uart_puts(" sp="); print_hex(pcb_array[1].sp);
-    os_uart_puts(" lr="); print_hex(pcb_array[1].lr);
-    os_uart_puts(" cpsr="); print_hex(pcb_array[1].cpsr);
-    os_uart_puts("\n");
 
     current_proc = &pcb_array[0];
     next_proc    = &pcb_array[1];
 
     enable_irq();
+    os_uart_puts("NOT WINDOWS XP \n");
     os_uart_puts("IRQs enabled\n");
     os_uart_puts("Calling first_launch for P1...\n");
 
@@ -282,13 +231,13 @@ void timer_irq_handler(void) {
     timer_ack();
     intc_eoi();
 
-    os_uart_puts("[C-IRQ] switching from PID ");
-    print_dec(current_proc->pid);
+   // os_uart_puts("[C-IRQ] switching from PID ");
+   // print_dec(current_proc->pid);
 
     next_proc = (current_proc->pid == 1) ? &pcb_array[1] : &pcb_array[0];
     current_proc = next_proc;
 
-    os_uart_puts(" to PID ");
-    print_dec(current_proc->pid);
+   // os_uart_puts(" to PID ");
+   // print_dec(current_proc->pid);
     os_uart_puts("\n");
 }

@@ -98,16 +98,11 @@ hang:
  * Prints diagnostics, then jumps to the process.
  * ============================================================ */
 first_launch:
-    /* Save PCB pointer */
     mov r4, r0
 
     /* Print entering */
     ldr r0, =msg_fl_enter
     bl  os_uart_puts
-
-    /* Call C debug function */
-    mov r0, r4
-    bl  os_debug_dump_pcb
 
     /* =========================
        REAL CONTEXT RESTORE
@@ -127,7 +122,6 @@ first_launch:
 
     movs pc, lr
 
-
 /* ============================================================
  * IRQ handler
  * ============================================================ */
@@ -135,11 +129,6 @@ irq_handler:
     sub lr, lr, #4
     stmfd sp!, {r0-r12, lr}
 
-    /* Print that we entered IRQ */
-    push {r0-r3}
-    ldr  r0, =msg_irq
-    bl   os_uart_puts
-    pop  {r0-r3}
 
     /* ---- Save current process ---- */
     ldr r0, =current_proc
@@ -264,15 +253,6 @@ hex_chars:
 
 msg_fl_enter:
     .asciz "[first_launch] entering\n"
-msg_fl_pc:
-    .asciz "[first_launch] PC = "
-msg_fl_sp:
-    .asciz "[first_launch] SP = "
-msg_fl_cpsr:
-    .asciz "[first_launch] CPSR = "
-msg_newline:
-    .asciz "\n"
-msg_irq:
-    .asciz "[IRQ]\n"
+
 msg_undef:
     .asciz "[UNDEF EXCEPTION]\n"

@@ -1,38 +1,17 @@
-//Prints letters from a to z with a delay in between
-#include "../Library/io.h"
+#include "../Library/stdio.h"
 
-int p2_main(void){
-    while(1){
-        io_putc('2');
+int p2_main(void) {
+    char c = 'a';
+    int counter = 0;
+
+    while (1) {
+        counter++;
+
+        if (counter >= 50000000) {   
+            PRINT("----FROM P2: %c\n", c);
+            c++;
+            if (c > 'z') c = 'a';
+            counter = 0;
+        }
     }
 }
-
-/*
-extern unsigned int __bss_start__;
-extern unsigned int __bss_end__;
-
-static void clear_bss(void) {
-    unsigned int *p = &__bss_start__;
-    while (p < &__bss_end__) {
-        *p++ = 0;
-    }
-}
-
-
-static void delay(volatile unsigned int count){
-    while(count--);
-}
-
-
-int p2_main(void){
-    clear_bss();   
-
-    PRINT(">>> ENTERED P2 HEHE <<< \n");
-
-    while(1){
-        PRINT("P2 alive\n");
-        for (volatile int i = 0; i < 1000000; i++);
-    }
-}
-
-*/
