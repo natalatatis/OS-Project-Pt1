@@ -1,23 +1,27 @@
+/* ============================================================
+ * root_beagle.s  —  AM335x / BeagleBone Black
+ * ============================================================ */
 
     .syntax unified
     .code 32
+
     .globl _start
     .globl PUT32
     .globl GET32
     .globl enable_irq
-    .extern main
-    .extern timer_irq_handler   /* void timer_irq_handler  */
-    .extern current_proc        /* pcb_t *current_proc  */
-    .extern next_proc           /* pcb_t *next_proc */
+    .globl first_launch
 
+    .extern main
+    .extern timer_irq_handler
+    .extern current_proc
+    .extern next_proc
+    .extern os_uart_puts
 
     .extern __bss_start__
     .extern __bss_end__
     .extern __os_stack_top
     .extern __irq_stack_top
-
-
- //PCB field offsets  — must match struct PCB in pcb.h exactly
+    .extern os_debug_dump_pcb
 
     .equ PCB_PID,   0
     .equ PCB_SP,    4
@@ -27,40 +31,43 @@
     .equ PCB_CPSR,  68
     .equ PCB_STATE, 72
 
-    .equ STATE_READY,   1   /* must match proc_state_t READY   */
-    .equ STATE_RUNNING, 2   /* must match proc_state_t RUNNING */
+    .equ STATE_READY,   1
+    .equ STATE_RUNNING, 2
 
-
+/* ============================================================
+ * Vector table
+ * ============================================================ */
     .section .text
-    .align 5        
+    .align 5
 
 _start:
-
 vector_table:
-    b reset_handler         /* 0x00  Reset                  */
-    b undefined_handler     /* 0x04  Undefined Instruction  */
-    b swi_handler           /* 0x08  SVC / SWI              */
-    b prefetch_handler      /* 0x0C  Prefetch Abort         */
-    b data_handler          /* 0x10  Data Abort             */
-    b .                     /* 0x14  Reserved               */
-    b irq_handler           /* 0x18  IRQ                    */
-    b fiq_handler           /* 0x1C  FIQ                    */
+    b reset_handler
+    b undefined_handler
+    b swi_handler
+    b prefetch_handler
+    b data_handler
+    b .
+    b irq_handler
+    b fiq_handler
 
-// Reset handler
+/* ============================================================
+ * Reset handler
+ * ============================================================ */
 reset_handler:
-    cpsid i                 /* disable IRQs while setting up */
+    cpsid i
 
-    /* Set up IRQ-mode stack */
+    /* IRQ stack */
     mrs r0, cpsr
     bic r0, r0, #0x1F
-    orr r0, r0, #0x12       /* IRQ mode */
+    orr r0, r0, #0x12
     msr cpsr_c, r0
     ldr sp, =__irq_stack_top
 
-    /* Back to SVC mode, set up OS stack */
+    /* SVC stack */
     mrs r0, cpsr
     bic r0, r0, #0x1F
-    orr r0, r0, #0x13       /* SVC mode */
+    orr r0, r0, #0x13
     msr cpsr_c, r0
     ldr sp, =__os_stack_top
 
@@ -69,13 +76,13 @@ reset_handler:
     ldr r1, =__bss_end__
     mov r2, #0
 clear_bss:
-    cmp r0, r1
+    cmp  r0, r1
     strlt r2, [r0], #4
-    blt clear_bss
+    blt  clear_bss
     dsb
     isb
 
-    /* Install vector table via VBAR */
+    /* VBAR */
     ldr r0, =vector_table
     mcr p15, 0, r0, c12, c0, 0
     isb
@@ -85,104 +92,144 @@ clear_bss:
 hang:
     b hang
 
-// IRQ handler
+/* ============================================================
+ * first_launch(pcb_t *pcb)   r0 = PCB pointer
+ *
+ * Prints diagnostics, then jumps to the process.
+ * ============================================================ */
+first_launch:
+    /* Save PCB pointer */
+    mov r4, r0
+
+    /* Print entering */
+    ldr r0, =msg_fl_enter
+    bl  os_uart_puts
+
+    /* Call C debug function */
+    mov r0, r4
+    bl  os_debug_dump_pcb
+
+    /* =========================
+       REAL CONTEXT RESTORE
+       ========================= */
+
+    mov r1, #STATE_RUNNING
+    str r1, [r4, #PCB_STATE]
+
+    ldr r1, [r4, #PCB_CPSR]
+    msr spsr_cxsf, r1
+
+    ldr sp, [r4, #PCB_SP]
+    ldr lr, [r4, #PCB_LR]
+
+    add r1, r4, #PCB_R0
+    ldmia r1, {r0-r12}
+
+    movs pc, lr
+
+
+/* ============================================================
+ * IRQ handler
+ * ============================================================ */
 irq_handler:
-    /* Adjust LR so it points to the instruction that was running. */
     sub lr, lr, #4
+    stmfd sp!, {r0-r12, lr}
 
+    /* Print that we entered IRQ */
+    push {r0-r3}
+    ldr  r0, =msg_irq
+    bl   os_uart_puts
+    pop  {r0-r3}
 
-    stmfd sp!, {r0-r12, lr}    
-
-    /* ---- Get current_proc pointer */
+    /* ---- Save current process ---- */
     ldr r0, =current_proc
-    ldr r0, [r0]                /* r0 = current_proc               */
+    ldr r0, [r0]
     cmp r0, #0
-    beq .Lno_save               /* NULL on very first tick         */
+    beq .Lno_save
 
-    /* ---- Copy R0-R12 from IRQ stack into pcb->registers[]. ---- */
-    ldr r1, [sp, #0]  
-    ldr r1, [sp, #4]  
-    ldr r1, [sp, #8]  
-    ldr r1, [sp, #12] 
-    ldr r1, [sp, #16] 
-    ldr r1, [sp, #20] 
-    ldr r1, [sp, #24]
-    ldr r1, [sp, #28] 
-    ldr r1, [sp, #32] 
-    ldr r1, [sp, #36] 
-    ldr r1, [sp, #40] 
-    ldr r1, [sp, #44] 
-    ldr r1, [sp, #48] 
+    /* Save R0-R12 */
+    add r2, r0, #PCB_R0
+    ldr r1, [sp, #0]  ; str r1, [r2, #0]
+    ldr r1, [sp, #4]  ; str r1, [r2, #4]
+    ldr r1, [sp, #8]  ; str r1, [r2, #8]
+    ldr r1, [sp, #12] ; str r1, [r2, #12]
+    ldr r1, [sp, #16] ; str r1, [r2, #16]
+    ldr r1, [sp, #20] ; str r1, [r2, #20]
+    ldr r1, [sp, #24] ; str r1, [r2, #24]
+    ldr r1, [sp, #28] ; str r1, [r2, #28]
+    ldr r1, [sp, #32] ; str r1, [r2, #32]
+    ldr r1, [sp, #36] ; str r1, [r2, #36]
+    ldr r1, [sp, #40] ; str r1, [r2, #40]
+    ldr r1, [sp, #44] ; str r1, [r2, #44]
+    ldr r1, [sp, #48] ; str r1, [r2, #48]
 
-    /* ---- Save PC (interrupted instruction address). ----------- */
-    ldr r1, [sp, #52]          
+    /* Save PC */
+    ldr r1, [sp, #52]
     str r1, [r0, #PCB_PC]
 
-    /* ---- Save SVC-mode SP and LR by switching modes briefly. -- */
-    mrs r3, cpsr                /* save current IRQ-mode CPSR      */
+    /* Save SVC SP and LR */
+    mrs r3, cpsr
     bic r2, r3, #0x1F
-    orr r2, r2, #0x13           /* SVC mode; I-bit stays set  */
-    msr cpsr_c, r2              /* enter SVC mode  */
+    orr r2, r2, #0x13
+    msr cpsr_c, r2
+    str sp, [r0, #PCB_SP]
+    str lr, [r0, #PCB_LR]
+    msr cpsr_c, r3
 
-    str sp, [r0, #PCB_SP]       
-    str lr, [r0, #PCB_LR]      
-
-    msr cpsr_c, r3              /* back to IRQ mode */
-
+    /* Save SPSR */
     mrs r1, spsr
     str r1, [r0, #PCB_CPSR]
 
     mov r1, #STATE_READY
     str r1, [r0, #PCB_STATE]
 
-
 .Lno_save:
-    /* ---- Call C handler */
+    /* Call C handler */
     and r4, sp, #4
     sub sp, sp, r4
     push {r4, lr}
-
     bl timer_irq_handler
-
     pop {r4, lr}
     add sp, sp, r4
 
-    /* Restore next process context. */
+    /* ---- Restore next process ---- */
     ldr r0, =next_proc
-    ldr r0, [r0]                /* r0 = next_proc pointer  */
+    ldr r0, [r0]
 
-    /* Process is running */
     mov r1, #STATE_RUNNING
     str r1, [r0, #PCB_STATE]
 
     ldr r1, [r0, #PCB_CPSR]
     msr spsr_cxsf, r1
 
-    /* Restore SVC SP and LR. */
     mrs r3, cpsr
     bic r2, r3, #0x1F
-    orr r2, r2, #0x13           /* SVC mode */
+    orr r2, r2, #0x13
     msr cpsr_c, r2
-
-    ldr sp, [r0, #PCB_SP]      
-    ldr lr, [r0, #PCB_LR]       
-
-    msr cpsr_c, r3              /* back to IRQ mode */
-
+    ldr sp, [r0, #PCB_SP]
+    ldr lr, [r0, #PCB_LR]
+    msr cpsr_c, r3
 
     ldr lr, [r0, #PCB_PC]
 
     add r1, r0, #PCB_R0
     ldmia r1, {r0-r12}
 
-    add sp, sp, #56            
+    add sp, sp, #56
 
     movs pc, lr
 
-
- // Stubs for unused exceptions
-
+/* ============================================================
+ * Exception stubs
+ * ============================================================ */
 undefined_handler:
+    /* Print which address caused the fault, then hang */
+    push {r0, lr}
+    ldr  r0, =msg_undef
+    bl   os_uart_puts
+    pop  {r0, lr}
+    b hang
+
 swi_handler:
 prefetch_handler:
 data_handler:
@@ -191,6 +238,9 @@ fiq_handler:
 
 
 
+/* ============================================================
+ * Memory helpers
+ * ============================================================ */
 PUT32:
     str r1, [r0]
     bx  lr
@@ -199,11 +249,30 @@ GET32:
     ldr r0, [r0]
     bx  lr
 
-
- // Enable IRQ  
 enable_irq:
     mrs r0, cpsr
     bic r0, r0, #0x80
     msr cpsr_c, r0
     bx  lr
-    
+
+/* ============================================================
+ * Read-only data
+ * ============================================================ */
+    .section .rodata
+hex_chars:
+    .ascii "0123456789ABCDEF"
+
+msg_fl_enter:
+    .asciz "[first_launch] entering\n"
+msg_fl_pc:
+    .asciz "[first_launch] PC = "
+msg_fl_sp:
+    .asciz "[first_launch] SP = "
+msg_fl_cpsr:
+    .asciz "[first_launch] CPSR = "
+msg_newline:
+    .asciz "\n"
+msg_irq:
+    .asciz "[IRQ]\n"
+msg_undef:
+    .asciz "[UNDEF EXCEPTION]\n"
