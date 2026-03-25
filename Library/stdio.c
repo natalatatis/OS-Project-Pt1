@@ -110,6 +110,7 @@ void print_hex(unsigned int value) {
     io_puts(buf);
 }
 
+// This is the function we are going to be using in the user programs (P1 and P2)
 void PRINT(const char *fmt, ...) {
     va_list args;
     va_start(args, fmt);

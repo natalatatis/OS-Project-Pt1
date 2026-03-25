@@ -1,6 +1,5 @@
-/* ============================================================
- * root_beagle.s  —  AM335x / BeagleBone Black
- * ============================================================ */
+
+ // root_beagle.s  —  AM335x / BeagleBone Black
 
     .syntax unified
     .code 32
@@ -34,9 +33,7 @@
     .equ STATE_READY,   1
     .equ STATE_RUNNING, 2
 
-/* ============================================================
- * Vector table
- * ============================================================ */
+ // Vector table
     .section .text
     .align 5
 
@@ -51,30 +48,30 @@ vector_table:
     b irq_handler
     b fiq_handler
 
-/* ============================================================
- * Reset handler
- * ============================================================ */
+
+ // Reset handler
 reset_handler:
     cpsid i
 
-    /* IRQ stack */
+    // IRQ stack
     mrs r0, cpsr
     bic r0, r0, #0x1F
     orr r0, r0, #0x12
     msr cpsr_c, r0
     ldr sp, =__irq_stack_top
 
-    /* SVC stack */
+    // SVC mode stack
     mrs r0, cpsr
     bic r0, r0, #0x1F
     orr r0, r0, #0x13
     msr cpsr_c, r0
     ldr sp, =__os_stack_top
 
-    /* Clear .bss */
+   // Clear .bss section
     ldr r0, =__bss_start__
     ldr r1, =__bss_end__
     mov r2, #0
+
 clear_bss:
     cmp  r0, r1
     strlt r2, [r0], #4
@@ -82,7 +79,7 @@ clear_bss:
     dsb
     isb
 
-    /* VBAR */
+    // VBAR
     ldr r0, =vector_table
     mcr p15, 0, r0, c12, c0, 0
     isb
@@ -92,21 +89,15 @@ clear_bss:
 hang:
     b hang
 
-/* ============================================================
- * first_launch(pcb_t *pcb)   r0 = PCB pointer
- *
- * Prints diagnostics, then jumps to the process.
- * ============================================================ */
+// Launches P1 
 first_launch:
     mov r4, r0
 
-    /* Print entering */
+    // Print that we are entering
     ldr r0, =msg_fl_enter
     bl  os_uart_puts
 
-    /* =========================
-       REAL CONTEXT RESTORE
-       ========================= */
+
 
     mov r1, #STATE_RUNNING
     str r1, [r4, #PCB_STATE]
@@ -122,21 +113,19 @@ first_launch:
 
     movs pc, lr
 
-/* ============================================================
- * IRQ handler
- * ============================================================ */
+// IRQ handler
 irq_handler:
     sub lr, lr, #4
     stmfd sp!, {r0-r12, lr}
 
 
-    /* ---- Save current process ---- */
+    // Save current process
     ldr r0, =current_proc
     ldr r0, [r0]
     cmp r0, #0
     beq .Lno_save
 
-    /* Save R0-R12 */
+    // Save registers
     add r2, r0, #PCB_R0
     ldr r1, [sp, #0]  ; str r1, [r2, #0]
     ldr r1, [sp, #4]  ; str r1, [r2, #4]
@@ -152,11 +141,11 @@ irq_handler:
     ldr r1, [sp, #44] ; str r1, [r2, #44]
     ldr r1, [sp, #48] ; str r1, [r2, #48]
 
-    /* Save PC */
+    // Save PC
     ldr r1, [sp, #52]
     str r1, [r0, #PCB_PC]
 
-    /* Save SVC SP and LR */
+    // Save SVC SP and LR 
     mrs r3, cpsr
     bic r2, r3, #0x1F
     orr r2, r2, #0x13
@@ -165,7 +154,7 @@ irq_handler:
     str lr, [r0, #PCB_LR]
     msr cpsr_c, r3
 
-    /* Save SPSR */
+    // Save SPSR 
     mrs r1, spsr
     str r1, [r0, #PCB_CPSR]
 
@@ -173,7 +162,7 @@ irq_handler:
     str r1, [r0, #PCB_STATE]
 
 .Lno_save:
-    /* Call C handler */
+    // Call C handler
     and r4, sp, #4
     sub sp, sp, r4
     push {r4, lr}
@@ -181,7 +170,7 @@ irq_handler:
     pop {r4, lr}
     add sp, sp, r4
 
-    /* ---- Restore next process ---- */
+    // Restore next process
     ldr r0, =next_proc
     ldr r0, [r0]
 
@@ -227,9 +216,7 @@ fiq_handler:
 
 
 
-/* ============================================================
- * Memory helpers
- * ============================================================ */
+// Memory stuff
 PUT32:
     str r1, [r0]
     bx  lr
@@ -244,9 +231,7 @@ enable_irq:
     msr cpsr_c, r0
     bx  lr
 
-/* ============================================================
- * Read-only data
- * ============================================================ */
+// To print for debugging
     .section .rodata
 hex_chars:
     .ascii "0123456789ABCDEF"

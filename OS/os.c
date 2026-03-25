@@ -1,10 +1,16 @@
-/* os.c — with diagnostics added, drop-in replacement */
 #include <stdint.h>
 #include <stddef.h>
 #include "os.h"
 #include "pcb.h"
 
 #define NUM_PROCS 2
+
+// Adresses of the processes and their stacks
+#define P1_ENTRY     0x82100000u
+#define P2_ENTRY     0x82200000u
+#define P1_STACK_TOP 0x82112000u
+#define P2_STACK_TOP 0x82212000u
+
 
 pcb_t  pcb_array[NUM_PROCS];
 pcb_t *current_proc = NULL;
@@ -94,26 +100,24 @@ static void watchdog_disable(void) {
     while (GET32(hw()->wdt_base + 0x34u)) {}
 }
 
-/* ============================================================
- * Timer
- * ============================================================ */
+// Timer init BEAGLE
 static void timer_init_beagle(void) {
     const hw_config_t *cfg = hw();
 
-    /* Disable timer */
+    // Disable timer
     PUT32(cfg->timer_base + 0x38u, 0x0);
 
-    /* Reset counter */
+    // Reset counter 
     PUT32(cfg->timer_base + 0x3Cu, 0x0);
 
-    /* Load value for ~1 second (depends on clock ~24MHz) */
+    // Load value for ~1 second 
     PUT32(cfg->timer_base + 0x40u, 0xFE000000u);
     PUT32(cfg->timer_base + 0x3Cu, 0xFE000000u);
 
-    /* Enable overflow interrupt */
+    // Enable overflow interrupt 
     PUT32(cfg->timer_base + 0x2Cu, 0x2u);
 
-    /* Start timer: auto-reload + start */
+    // Start timer: auto-reload + start 
     PUT32(cfg->timer_base + 0x38u, 0x3u);
 }
 
@@ -166,61 +170,59 @@ static void intc_eoi(void) {
         PUT32(hw()->intc_base + 0x30u, 0);
 }
 
-/* ============================================================
- * PCB setup
- * ============================================================ */
-#define P1_ENTRY     0x82100000u
-#define P2_ENTRY     0x82200000u
-#define P1_STACK_TOP 0x82112000u
-#define P2_STACK_TOP 0x82212000u
 
-static void setup_initial_stack(pcb_t *pcb,
-                                 unsigned int stack_top,
-                                 unsigned int entry_point,
-                                 int pid)
-{
+
+ // Process Control Block setup
+
+static void setup_initial_stack(pcb_t *pcb, unsigned int stack_top,  unsigned int entry_point, int pid){
     int i;
-    for (i = 0; i < 13; i++) pcb->registers[i] = 0;
-    pcb->pid   = pid;
-    pcb->sp    = stack_top;
-    pcb->pc    = entry_point;
-    pcb->lr    = entry_point;
-    pcb->cpsr  = 0x13u;        /* SVC mode, IRQs enabled */
-    pcb->state = READY;
+    for (i = 0; i < 13; i++) pcb->registers[i] = 0; // Save the resiters
+    pcb->pid   = pid; // Process id
+    pcb->sp    = stack_top; // Stack pointer
+    pcb->pc    = entry_point; // Program counter
+    pcb->lr    = entry_point; // Link register
+    pcb->cpsr  = 0x13u;        // SVC mode, IRQs enabled 
+    pcb->state = READY; // State
 }
 
 
-/* ============================================================
- * main
- * ============================================================ */
+// Main (OS starts here)
 int main(void) {
+    // Disable watchdog to avoid resets
     watchdog_disable();
 
+    // Starting the system
     os_uart_puts("OS booting...\nPlatform: ");
     os_uart_puts(current_platform == PLATFORM_BEAGLE ? "BEAGLE\n" : "QEMU\n");
   
     os_uart_puts("--------------------\n\n");
 
+    // Initialize interrupt controller and timer
     intc_init();
     timer_init();
 
-    /* PCBs before enabling IRQs */
+    // PCBs before enabling IRQs 
     setup_initial_stack(&pcb_array[0], P1_STACK_TOP, P1_ENTRY, 1);
     setup_initial_stack(&pcb_array[1], P2_STACK_TOP, P2_ENTRY, 2);
 
-
+    // Processes 
     current_proc = &pcb_array[0];
     next_proc    = &pcb_array[1];
 
+    // Enable IRQs
     enable_irq();
     os_uart_puts("NOT WINDOWS XP \n");
     os_uart_puts("IRQs enabled\n");
     os_uart_puts("Calling first_launch for P1...\n");
 
+    // Launch process 1
     first_launch(current_proc);
 
     os_uart_puts("ERROR: first_launch returned!\n");
-    while (1) { __asm__("wfi"); }
+    // Keep going
+    while (1) { 
+        __asm__("wfi");
+     }
     return 0;
 }
 

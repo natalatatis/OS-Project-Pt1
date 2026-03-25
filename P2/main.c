@@ -1,3 +1,4 @@
+// PROCESS 2 - prints letters of the alphabet
 #include "../Library/stdio.h"
 
 int p2_main(void) {
