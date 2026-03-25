@@ -16,6 +16,20 @@ pcb_t  pcb_array[NUM_PROCS];
 pcb_t *current_proc = NULL;
 pcb_t *next_proc    = NULL;
 
+// Number of timer interrupts per second
+static uint32_t timer_hz = 1;
+
+// Current tick counter
+static uint32_t tick_count = 0;
+
+// Quantum in ticks
+static uint32_t quantum_ticks = 2; //2s
+
+// Convert seconds to ticks
+static uint32_t seconds_to_ticks(uint32_t seconds){
+    return seconds * timer_hz;
+}
+
 extern void PUT32(uint32_t addr, uint32_t value);
 extern uint32_t GET32(uint32_t addr);
 extern void enable_irq(void);
@@ -209,6 +223,7 @@ int main(void) {
     current_proc = &pcb_array[0];
     next_proc    = &pcb_array[1];
 
+    quantum_ticks = seconds_to_ticks(2);
     // Enable IRQs
     enable_irq();
     os_uart_puts("NOT WINDOWS XP \n");
@@ -226,20 +241,25 @@ int main(void) {
     return 0;
 }
 
-/* ============================================================
- * timer_irq_handler
- * ============================================================ */
+
+ // timer_irq_handler
+
 void timer_irq_handler(void) {
     timer_ack();
     intc_eoi();
 
-   // os_uart_puts("[C-IRQ] switching from PID ");
-   // print_dec(current_proc->pid);
+    tick_count++;
 
-    next_proc = (current_proc->pid == 1) ? &pcb_array[1] : &pcb_array[0];
+    if (tick_count >= quantum_ticks) {
+        tick_count = 0;
+
+        next_proc = (current_proc->pid == 1)
+                  ? &pcb_array[1]
+                  : &pcb_array[0];
+    } else {
+        /* Stay on same process */
+        next_proc = current_proc;
+    }
+
     current_proc = next_proc;
-
-   // os_uart_puts(" to PID ");
-   // print_dec(current_proc->pid);
-    os_uart_puts("\n");
 }
