@@ -1,3 +1,4 @@
+/*
 #ifndef MEM_H
 #define MEM_H
 #include <stdint.h>
@@ -6,3 +7,5 @@
 #define GET32(addr)     (*(volatile uint32_t *)(addr))
 
 #endif
+
+*/

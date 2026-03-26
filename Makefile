@@ -9,48 +9,42 @@ P1    = P1
 P2    = P2
 BUILD = build
 
-CFLAGS = -ffreestanding -nostdlib -nostartfiles -I$(INC) -I$(LIB) -g
+CFLAGS = -ffreestanding -nostdlib -nostartfiles -g -I$(INC) -I$(LIB) -I$(OS)
 
-# OS object files
-OS_OBJS = $(BUILD)/start.o \
-          $(BUILD)/os.o \
-          $(BUILD)/stdio.o \
-          $(BUILD)/string.o \
-          $(BUILD)/io.o   # real UART
+.PHONY: qemu beagle flash clean run_qemu \
+        _build_os _build_p1 _build_p2
 
-.PHONY: qemu beagle flash clean
-
-# -----------------------------
-# QEMU
-# -----------------------------
 qemu: clean
 	$(MAKE) BUILD_START="$(OS)/root_qemu.s" \
-	        LINKER=$(OS)/linker_qemu.ld \
-	        CPU="-DTARGET_QEMU -mcpu=arm926ej-s" \
-	        _build_os _build_p1_qemu _build_p2_qemu
-	qemu-system-arm -M versatilepb -cpu arm926 -nographic -kernel $(BUILD)/kernel.bin
+	        LINKER="$(OS)/linker_qemu.ld" \
+	        CPU="-DTARGET_QEMU -mcpu=arm926ej-s -marm" \
+	        P1_LINKER="$(P1)/p1.ld" \
+	        P2_LINKER="$(P2)/p2.ld" \
+	        _build_os _build_p1 _build_p2
 
-# -----------------------------
-# BeagleBone
-# -----------------------------
 beagle: clean
+	@echo "================================"
+	@echo " Building for BeagleBone Black"
+	@echo "================================"
 	$(MAKE) BUILD_START="$(OS)/root_beagle.s" \
-	        LINKER=$(OS)/linker_beagle.ld \
-	        CPU="-DTARGET_BEAGLE -mcpu=cortex-a8" \
-	        _build_os _build_p1_beagle _build_p2_beagle
-	$(MAKE) flash
-
-flash:
+	        LINKER="$(OS)/linker_beagle.ld" \
+	        CPU="-DTARGET_BEAGLE -mcpu=cortex-a8 -marm" \
+	        P1_LINKER="$(P1)/p1.ld" \
+	        P2_LINKER="$(P2)/p2.ld" \
+	        _build_os _build_p1 _build_p2
 	@echo "================================"
 	@echo " Deploying to BeagleBone Black"
 	@echo "================================"
 	./deploy_beagle.sh
 
+run_qemu: qemu
+	qemu-system-arm -M versatilepb -cpu arm926 -nographic -kernel $(BUILD)/kernel.elf
+
 $(BUILD):
 	mkdir -p $(BUILD)
 
 # -----------------------------
-# OS build
+# OS
 # -----------------------------
 _build_os: $(BUILD) $(BUILD)/kernel.bin
 
@@ -60,71 +54,57 @@ $(BUILD)/start.o: $(BUILD_START)
 $(BUILD)/os.o: $(OS)/os.c
 	$(CC) -c $< $(CFLAGS) $(CPU) -o $@
 
-$(BUILD)/stdio.o: $(LIB)/stdio.c
-	$(CC) -c $< $(CFLAGS) $(CPU) -o $@
-
-$(BUILD)/string.o: $(LIB)/string.c
-	$(CC) -c $< $(CFLAGS) $(CPU) -o $@
-
-$(BUILD)/io.o: $(LIB)/io.c
-	$(CC) -c $< $(CFLAGS) $(CPU) -o $@
-
-$(BUILD)/kernel.elf: $(OS_OBJS)
+$(BUILD)/kernel.elf: $(BUILD)/start.o $(BUILD)/os.o
 	$(LD) -T $(LINKER) $^ -o $@
 
 $(BUILD)/kernel.bin: $(BUILD)/kernel.elf
 	$(OBJCOPY) -O binary $< $@
 
 # -----------------------------
-# P1 build
+# P1
 # -----------------------------
-_build_p1_beagle: $(BUILD)
-	$(MAKE) BUILD_CPU="-DTARGET_BEAGLE -mcpu=cortex-a8" _build_p1_generic
+_build_p1: $(BUILD) $(BUILD)/p1.bin
 
-_build_p1_qemu: $(BUILD)
-	$(MAKE) BUILD_CPU="-DTARGET_QEMU -mcpu=arm926ej-s" _build_p1_generic
+$(BUILD)/p1.o: $(P1)/main.c
+	$(CC) -c $< $(CFLAGS) $(CPU) -o $@
 
-_build_p1_generic:
-	$(CC) -c $(P1)/main.c $(CFLAGS) $(BUILD_CPU) -o $(BUILD)/p1.o
-	$(CC) -c $(LIB)/stdio.c $(CFLAGS) $(BUILD_CPU) -o $(BUILD)/p1_stdio.o
-	$(CC) -c $(LIB)/string.c $(CFLAGS) $(BUILD_CPU) -o $(BUILD)/p1_string.o
-	$(CC) -c $(LIB)/io_stub.c $(CFLAGS) $(BUILD_CPU) -o $(BUILD)/p1_io.o
+$(BUILD)/p1_stdio.o: $(LIB)/stdio.c
+	$(CC) -c $< $(CFLAGS) $(CPU) -o $@
 
-	$(LD) -T $(P1)/p1.ld \
-	      $(BUILD)/p1.o \
-	      $(BUILD)/p1_stdio.o \
-	      $(BUILD)/p1_string.o \
-	      $(BUILD)/p1_io.o \
-	      -o $(BUILD)/p1.elf
+$(BUILD)/p1_string.o: $(LIB)/string.c
+	$(CC) -c $< $(CFLAGS) $(CPU) -o $@
 
-	$(OBJCOPY) -O binary $(BUILD)/p1.elf $(BUILD)/p1.bin
+$(BUILD)/p1_io.o: $(LIB)/io.c
+	$(CC) -c $< $(CFLAGS) $(CPU) -o $@
 
-# -----------------------------
-# P2 build
-# -----------------------------
-_build_p2_beagle: $(BUILD)
-	$(MAKE) BUILD_CPU="-DTARGET_BEAGLE -mcpu=cortex-a8" _build_p2_generic
+$(BUILD)/p1.elf: $(BUILD)/p1.o $(BUILD)/p1_stdio.o $(BUILD)/p1_string.o $(BUILD)/p1_io.o
+	$(LD) -T $(P1_LINKER) $^ -o $@
 
-_build_p2_qemu: $(BUILD)
-	$(MAKE) BUILD_CPU="-DTARGET_QEMU -mcpu=arm926ej-s" _build_p2_generic
-
-_build_p2_generic:
-	$(CC) -c $(P2)/main.c $(CFLAGS) $(BUILD_CPU) -o $(BUILD)/p2.o
-	$(CC) -c $(LIB)/stdio.c $(CFLAGS) $(BUILD_CPU) -o $(BUILD)/p2_stdio.o
-	$(CC) -c $(LIB)/string.c $(CFLAGS) $(BUILD_CPU) -o $(BUILD)/p2_string.o
-	$(CC) -c $(LIB)/io_stub.c $(CFLAGS) $(BUILD_CPU) -o $(BUILD)/p2_io.o
-
-	$(LD) -T $(P2)/p2.ld \
-	      $(BUILD)/p2.o \
-	      $(BUILD)/p2_stdio.o \
-	      $(BUILD)/p2_string.o \
-	      $(BUILD)/p2_io.o \
-	      -o $(BUILD)/p2.elf
-
-	$(OBJCOPY) -O binary $(BUILD)/p2.elf $(BUILD)/p2.bin
+$(BUILD)/p1.bin: $(BUILD)/p1.elf
+	$(OBJCOPY) -O binary $< $@
 
 # -----------------------------
-# Clean
+# P2
 # -----------------------------
+_build_p2: $(BUILD) $(BUILD)/p2.bin
+
+$(BUILD)/p2.o: $(P2)/main.c
+	$(CC) -c $< $(CFLAGS) $(CPU) -o $@
+
+$(BUILD)/p2_stdio.o: $(LIB)/stdio.c
+	$(CC) -c $< $(CFLAGS) $(CPU) -o $@
+
+$(BUILD)/p2_string.o: $(LIB)/string.c
+	$(CC) -c $< $(CFLAGS) $(CPU) -o $@
+
+$(BUILD)/p2_io.o: $(LIB)/io.c
+	$(CC) -c $< $(CFLAGS) $(CPU) -o $@
+
+$(BUILD)/p2.elf: $(BUILD)/p2.o $(BUILD)/p2_stdio.o $(BUILD)/p2_string.o $(BUILD)/p2_io.o
+	$(LD) -T $(P2_LINKER) $^ -o $@
+
+$(BUILD)/p2.bin: $(BUILD)/p2.elf
+	$(OBJCOPY) -O binary $< $@
+
 clean:
 	rm -rf $(BUILD)

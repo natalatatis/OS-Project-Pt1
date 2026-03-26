@@ -2,31 +2,31 @@
 #include <stddef.h>
 #include "os.h"
 #include "pcb.h"
+#include "os_api.h"
 
 #define NUM_PROCS 2
 
-// Adresses of the processes and their stacks
+/* Addresses of the processes and their stacks */
 #define P1_ENTRY     0x82100000u
 #define P2_ENTRY     0x82200000u
 #define P1_STACK_TOP 0x82112000u
 #define P2_STACK_TOP 0x82212000u
 
-
 pcb_t  pcb_array[NUM_PROCS];
 pcb_t *current_proc = NULL;
 pcb_t *next_proc    = NULL;
 
-// Number of timer interrupts per second
+/* Number of timer interrupts per second */
 static uint32_t timer_hz = 1;
 
-// Current tick counter
+/* Current tick counter */
 static uint32_t tick_count = 0;
 
-// Quantum in ticks
-static uint32_t quantum_ticks = 2; //2s
+/* Quantums */
+static uint32_t quantum_ticks;
 
-// Convert seconds to ticks
-static uint32_t seconds_to_ticks(uint32_t seconds){
+/* Convert seconds to ticks */
+static uint32_t seconds_to_ticks(uint32_t seconds) {
     return seconds * timer_hz;
 }
 
@@ -34,6 +34,8 @@ extern void PUT32(uint32_t addr, uint32_t value);
 extern uint32_t GET32(uint32_t addr);
 extern void enable_irq(void);
 extern void first_launch(pcb_t *pcb);
+
+/* ------------------------------------------------ */
 
 typedef enum { PLATFORM_BEAGLE = 0, PLATFORM_QEMU = 1 } platform_t;
 
@@ -82,7 +84,8 @@ static inline const hw_config_t *hw(void) { return &hw_table[current_platform]; 
 void os_uart_putc(char c) {
     const hw_config_t *cfg = hw();
     while ((GET32(cfg->uart_base + cfg->uart_status_reg) & cfg->uart_tx_ready_mask)
-           != cfg->uart_tx_ready_value) {}
+           != cfg->uart_tx_ready_value) {
+    }
     PUT32(cfg->uart_base + cfg->uart_tx_reg, (uint32_t)c);
 }
 
@@ -93,13 +96,27 @@ void os_uart_puts(const char *s) {
     }
 }
 
+/* ============================================================
+ * Fixed OS API table for user processes / library
+ * ============================================================ */
+__attribute__((section(".os_api"), used))
+const os_api_t os_api_table = {
+    .putc = os_uart_putc,
+    .puts = os_uart_puts
+};
 
-
-// Function used to print adresses for debugging
+/* Function used to print addresses for debugging */
 static void print_dec(uint32_t v) {
-    char buf[12]; int i = 0;
-    if (!v) { os_uart_putc('0'); return; }
-    while (v) { buf[i++] = '0' + (v % 10); v /= 10; }
+    char buf[12];
+    int i = 0;
+    if (!v) {
+        os_uart_putc('0');
+        return;
+    }
+    while (v) {
+        buf[i++] = '0' + (v % 10u);
+        v /= 10u;
+    }
     while (i--) os_uart_putc(buf[i]);
 }
 
@@ -114,27 +131,28 @@ static void watchdog_disable(void) {
     while (GET32(hw()->wdt_base + 0x34u)) {}
 }
 
-// Timer init BEAGLE
+/* ============================================================
+ * Timer init
+ * ============================================================ */
 static void timer_init_beagle(void) {
     const hw_config_t *cfg = hw();
 
-    // Disable timer
+    /* Disable timer */
     PUT32(cfg->timer_base + 0x38u, 0x0);
 
-    // Reset counter 
+    /* Reset counter */
     PUT32(cfg->timer_base + 0x3Cu, 0x0);
 
-    // Load value for ~1 second 
+    /* Load value for ~1 second */
     PUT32(cfg->timer_base + 0x40u, 0xFE000000u);
     PUT32(cfg->timer_base + 0x3Cu, 0xFE000000u);
 
-    // Enable overflow interrupt 
+    /* Enable overflow interrupt */
     PUT32(cfg->timer_base + 0x2Cu, 0x2u);
 
-    // Start timer: auto-reload + start 
+    /* Start timer: auto-reload + start */
     PUT32(cfg->timer_base + 0x38u, 0x3u);
 }
-
 
 static void timer_init_qemu(void) {
     const hw_config_t *cfg = hw();
@@ -184,66 +202,61 @@ static void intc_eoi(void) {
         PUT32(hw()->intc_base + 0x30u, 0);
 }
 
-
-
- // Process Control Block setup
-
-static void setup_initial_stack(pcb_t *pcb, unsigned int stack_top,  unsigned int entry_point, int pid){
+/* ============================================================
+ * Process Control Block setup
+ * ============================================================ */
+static void setup_initial_stack(pcb_t *pcb, unsigned int stack_top,
+                                unsigned int entry_point, int pid) {
     int i;
-    for (i = 0; i < 13; i++) pcb->registers[i] = 0; // Save the resiters
-    pcb->pid   = pid; // Process id
-    pcb->sp    = stack_top; // Stack pointer
-    pcb->pc    = entry_point; // Program counter
-    pcb->lr    = entry_point; // Link register
-    pcb->cpsr  = 0x13u;        // SVC mode, IRQs enabled 
-    pcb->state = READY; // State
+    for (i = 0; i < 13; i++) pcb->registers[i] = 0;
+    pcb->pid   = pid;
+    pcb->sp    = stack_top;
+    pcb->pc    = entry_point;
+    pcb->lr    = entry_point;
+    pcb->cpsr  = 0x13u; /* SVC mode */
+    pcb->state = READY;
 }
 
-
-// Main (OS starts here)
+/* ============================================================
+ * Main
+ * ============================================================ */
 int main(void) {
-    // Disable watchdog to avoid resets
     watchdog_disable();
 
-    // Starting the system
     os_uart_puts("OS booting...\nPlatform: ");
     os_uart_puts(current_platform == PLATFORM_BEAGLE ? "BEAGLE\n" : "QEMU\n");
-  
     os_uart_puts("--------------------\n\n");
 
-    // Initialize interrupt controller and timer
     intc_init();
     timer_init();
 
-    // PCBs before enabling IRQs 
     setup_initial_stack(&pcb_array[0], P1_STACK_TOP, P1_ENTRY, 1);
     setup_initial_stack(&pcb_array[1], P2_STACK_TOP, P2_ENTRY, 2);
 
-    // Processes 
     current_proc = &pcb_array[0];
     next_proc    = &pcb_array[1];
 
-    quantum_ticks = seconds_to_ticks(2);
-    // Enable IRQs
+    quantum_ticks = seconds_to_ticks(1);
+
     enable_irq();
     os_uart_puts("NOT WINDOWS XP \n");
     os_uart_puts("IRQs enabled\n");
     os_uart_puts("Calling first_launch for P1...\n");
 
-    // Launch process 1
     first_launch(current_proc);
 
     os_uart_puts("ERROR: first_launch returned!\n");
-    // Keep going
-    while (1) { 
+
+    while (1) {
         __asm__("wfi");
-     }
+    }
+
     return 0;
 }
 
-
- // timer_irq_handler
-
+/* ============================================================
+ * Timer IRQ handler
+ * ============================================================ */
 void timer_irq_handler(void) {
     timer_ack();
     intc_eoi();
@@ -257,7 +270,6 @@ void timer_irq_handler(void) {
                   ? &pcb_array[1]
                   : &pcb_array[0];
     } else {
-        /* Stay on same process */
         next_proc = current_proc;
     }
 

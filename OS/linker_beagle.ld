@@ -4,13 +4,26 @@ SECTIONS
 {
     . = 0x82000000;
 
-    .vectors : { *(.vectors) }
+    .vectors : {
+        KEEP(*(.vectors))
+    }
 
-    .text : { *(.text*) }
+    .text : {
+        *(.text*)
+    }
 
-    .rodata : { *(.rodata*) }
+    .rodata : {
+        *(.rodata*)
+    }
 
-    .data : { *(.data*) }
+    . = 0x82008000;
+    .os_api : {
+        KEEP(*(.os_api))
+    }
+
+    .data : {
+        *(.data*)
+    }
 
     .bss : {
         __bss_start__ = .;
@@ -19,9 +32,6 @@ SECTIONS
         __bss_end__ = .;
     }
 
-    
-    . = 0x82010000;
-
-    __os_stack_top = 0x82012000;  /* 8KB stack */
-    __irq_stack_top = 0x82011000; /* 4KB IRQ stack  */
+    __irq_stack_top = 0x82011000;
+    __os_stack_top  = 0x82012000;
 }

@@ -79,12 +79,12 @@ clear_bss:
     dsb
     isb
 
-    // VBAR
+    // VBAR (when an interrupt happens, we jump here)
     ldr r0, =vector_table
     mcr p15, 0, r0, c12, c0, 0
     isb
 
-    bl main
+    bl main // Start OS
 
 hang:
     b hang
@@ -98,25 +98,27 @@ first_launch:
     bl  os_uart_puts
 
 
-
+    // Process is running
     mov r1, #STATE_RUNNING
     str r1, [r4, #PCB_STATE]
 
+    // Restore CPU state
     ldr r1, [r4, #PCB_CPSR]
     msr spsr_cxsf, r1
 
+    // Restore stack and link register
     ldr sp, [r4, #PCB_SP]
     ldr lr, [r4, #PCB_LR]
 
     add r1, r4, #PCB_R0
     ldmia r1, {r0-r12}
 
-    movs pc, lr
+    movs pc, lr // Jump to process
 
 // IRQ handler
 irq_handler:
-    sub lr, lr, #4
-    stmfd sp!, {r0-r12, lr}
+    sub lr, lr, #4 // Return address
+    stmfd sp!, {r0-r12, lr} // Save CPU registers
 
 
     // Save current process
@@ -157,6 +159,7 @@ irq_handler:
     // Save SPSR 
     mrs r1, spsr
     str r1, [r0, #PCB_CPSR]
+
 
     mov r1, #STATE_READY
     str r1, [r0, #PCB_STATE]

@@ -1,4 +1,5 @@
 // Hardware adresses for QEMU VersatilePB and BEAGLEBONE BLACK
+/*
 #ifndef HW_H
 #define HW_H
 
@@ -87,3 +88,5 @@
 #endif
 
 #endif
+
+*/
