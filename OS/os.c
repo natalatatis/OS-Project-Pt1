@@ -7,10 +7,18 @@
 #define NUM_PROCS 2
 
 /* Addresses of the processes and their stacks */
-#define P1_ENTRY     0x82100000u
-#define P2_ENTRY     0x82200000u
-#define P1_STACK_TOP 0x82112000u
-#define P2_STACK_TOP 0x82212000u
+#if defined(TARGET_BEAGLE)
+    #define P1_ENTRY     0x82100000u
+    #define P2_ENTRY     0x82200000u
+    #define P1_STACK_TOP 0x82112000u
+    #define P2_STACK_TOP 0x82212000u
+#elif defined(TARGET_QEMU)
+    #define P1_ENTRY     0x00100000u
+    #define P2_ENTRY     0x00200000u
+    #define P1_STACK_TOP 0x00112000u
+    #define P2_STACK_TOP 0x00212000u
+#endif
+
 
 pcb_t  pcb_array[NUM_PROCS];
 pcb_t *current_proc = NULL;
@@ -247,9 +255,11 @@ int main(void) {
 
     os_uart_puts("ERROR: first_launch returned!\n");
 
-    while (1) {
-        __asm__("wfi");
-    }
+    #ifdef TARGET_QEMU   // ARMv5 / arm926ej-s
+    while (1) { __asm__ volatile ("nop"); }   // safe spin
+    #else                  // ARMv7+ / Cortex-A
+        __asm__ volatile ("wfi");                 // low-power wait
+    #endif
 
     return 0;
 }

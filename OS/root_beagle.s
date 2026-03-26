@@ -84,7 +84,7 @@ clear_bss:
     mcr p15, 0, r0, c12, c0, 0
     isb
 
-    bl main // Start OS
+    bl main @Start OS
 
 hang:
     b hang
@@ -113,12 +113,12 @@ first_launch:
     add r1, r4, #PCB_R0
     ldmia r1, {r0-r12}
 
-    movs pc, lr // Jump to process
+    movs pc, lr @ Jump to process
 
 // IRQ handler
 irq_handler:
-    sub lr, lr, #4 // Return address
-    stmfd sp!, {r0-r12, lr} // Save CPU registers
+    sub lr, lr, #4 @ Return address
+    stmfd sp!, {r0-r12, lr} @ Save CPU registers
 
 
     // Save current process
@@ -129,19 +129,32 @@ irq_handler:
 
     // Save registers
     add r2, r0, #PCB_R0
-    ldr r1, [sp, #0]  ; str r1, [r2, #0]
-    ldr r1, [sp, #4]  ; str r1, [r2, #4]
-    ldr r1, [sp, #8]  ; str r1, [r2, #8]
-    ldr r1, [sp, #12] ; str r1, [r2, #12]
-    ldr r1, [sp, #16] ; str r1, [r2, #16]
-    ldr r1, [sp, #20] ; str r1, [r2, #20]
-    ldr r1, [sp, #24] ; str r1, [r2, #24]
-    ldr r1, [sp, #28] ; str r1, [r2, #28]
-    ldr r1, [sp, #32] ; str r1, [r2, #32]
-    ldr r1, [sp, #36] ; str r1, [r2, #36]
-    ldr r1, [sp, #40] ; str r1, [r2, #40]
-    ldr r1, [sp, #44] ; str r1, [r2, #44]
-    ldr r1, [sp, #48] ; str r1, [r2, #48]
+    ldr r1, [sp, #0]  
+    str r1, [r2, #0]
+    ldr r1, [sp, #4]  
+    str r1, [r2, #4]
+    ldr r1, [sp, #8]  
+    str r1, [r2, #8]
+    ldr r1, [sp, #12] 
+    str r1, [r2, #12]
+    ldr r1, [sp, #16] 
+    str r1, [r2, #16]
+    ldr r1, [sp, #20] 
+    str r1, [r2, #20]
+    ldr r1, [sp, #24] 
+    str r1, [r2, #24]
+    ldr r1, [sp, #28] 
+    str r1, [r2, #28]
+    ldr r1, [sp, #32] 
+    str r1, [r2, #32]
+    ldr r1, [sp, #36] 
+    str r1, [r2, #36]
+    ldr r1, [sp, #40] 
+    str r1, [r2, #40]
+    ldr r1, [sp, #44] 
+    str r1, [r2, #44]
+    ldr r1, [sp, #48] 
+    str r1, [r2, #48]
 
     // Save PC
     ldr r1, [sp, #52]
