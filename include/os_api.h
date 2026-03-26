@@ -11,7 +11,7 @@ typedef struct {
 #if defined(TARGET_BEAGLE)
 #define OS_API_ADDR 0x82008000u
 #elif defined(TARGET_QEMU)
-#define OS_API_ADDR 0x00008000u
+#define OS_API_ADDR 0x00018000u
 #else
 #error "Compile with -DTARGET_BEAGLE or -DTARGET_QEMU"
 #endif

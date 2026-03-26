@@ -1,75 +1,74 @@
+.syntax unified
+.cpu    arm926ej-s
+.code   32
 
-    .syntax unified
-    .cpu    arm926ej-s
-    .code   32
+.globl _start
+.globl PUT32
+.globl GET32
+.globl enable_irq
+.globl first_launch
 
-    .globl _start
-    .globl PUT32
-    .globl GET32
-    .globl enable_irq
-    .globl first_launch
+.extern main
+.extern timer_irq_handler
+.extern current_proc
+.extern next_proc
+.extern os_uart_puts
+.extern os_uart_putc
 
-    .extern main
-    .extern timer_irq_handler
-    .extern current_proc
-    .extern next_proc
-    .extern os_uart_puts
-    .extern os_uart_putc
+.extern __bss_start__
+.extern __bss_end__
+.extern __os_stack_top__
+.extern __irq_stack_top__
 
-    .extern __bss_start__
-    .extern __bss_end__
-    .extern __os_stack_top
-    .extern __irq_stack_top
+.equ PCB_PID,   0
+.equ PCB_SP,    4
+.equ PCB_PC,    8
+.equ PCB_LR,    12
+.equ PCB_R0,    16
+.equ PCB_CPSR,  68
+.equ PCB_STATE, 72
 
+.equ STATE_READY,   1
+.equ STATE_RUNNING, 2
 
- // PCB offsets 
-
-    .equ PCB_PID,   0
-    .equ PCB_SP,    4
-    .equ PCB_PC,    8
-    .equ PCB_LR,    12
-    .equ PCB_R0,    16
-    .equ PCB_CPSR,  68
-    .equ PCB_STATE, 72
-
-    .equ STATE_READY,   1
-    .equ STATE_RUNNING, 2
-
-// Vector table
-    .section .vectors, "ax"
-
+// ============================================================
+// Vector Table
+// ============================================================
+.section .vectors, "ax"
 _start:
 vector_table:
-    b reset_handler         /* 0x00  Reset              */
-    b undefined_handler     /* 0x04  Undefined          */
-    b swi_handler           /* 0x08  SVC/SWI            */
-    b prefetch_handler      /* 0x0C  Prefetch Abort     */
-    b data_handler          /* 0x10  Data Abort         */
-    b .                     /* 0x14  Reserved           */
-    b irq_handler           /* 0x18  IRQ                */
-    b fiq_handler           /* 0x1C  FIQ                */
+    b reset_handler         /* 0x00 Reset */
+    b undefined_handler     /* 0x04 Undefined */
+    b swi_handler           /* 0x08 SWI */
+    b prefetch_handler      /* 0x0C Prefetch Abort */
+    b data_handler          /* 0x10 Data Abort */
+    b .                     /* 0x14 Reserved */
+    b irq_handler           /* 0x18 IRQ */
+    b fiq_handler           /* 0x1C FIQ */
 
-// Reset handler
-    .section .text, "ax"
-
+// ============================================================
+// Reset Handler
+// ============================================================
+.section .text, "ax"
 reset_handler:
+    /* Disable IRQ */
     mrs r0, cpsr
     orr r0, r0, #0x80
-    msr cpsr_c, r0                /* disable IRQ */
+    msr cpsr_c, r0
 
-    /* Set up IRQ-mode stack */
+    /* IRQ stack */
     mrs r0, cpsr
     bic r0, r0, #0x1F
     orr r0, r0, #0x12       /* IRQ mode */
     msr cpsr_c, r0
-    ldr sp, =__irq_stack_top
+    ldr sp, =__irq_stack_top__
 
-    /* Set up SVC-mode stack */
+    /* SVC stack */
     mrs r0, cpsr
     bic r0, r0, #0x1F
-    orr r0, r0, #0x13       /* SVC mode*/
+    orr r0, r0, #0x13       /* SVC mode */
     msr cpsr_c, r0
-    ldr sp, =__os_stack_top
+    ldr sp, =__os_stack_top__
 
     /* Clear .bss */
     ldr r0, =__bss_start__
@@ -80,62 +79,61 @@ clear_bss:
     strlt r2, [r0], #4
     blt  clear_bss
 
-
+    /* Start C main */
     bl main
 
 hang:
-    b hang
+hang_loop:
+    nop
+    b hang_loop
 
-
+// ============================================================
+// Launch first process
+// ============================================================
 first_launch:
-    mov r4, r0
-
     ldr r0, =msg_fl_enter
     bl  os_uart_puts
 
-    mov r1, #STATE_RUNNING
-    str r1, [r4, #PCB_STATE]
+    /* r1 = current_proc */
+    ldr r1, =current_proc
+    ldr r1, [r1]
 
-    ldr r1, [r4, #PCB_CPSR]
-    msr spsr_cxsf, r1
+    /* state = RUNNING */
+    mov r2, #STATE_RUNNING
+    str r2, [r1, #PCB_STATE]
 
-    ldr sp, [r4, #PCB_SP]
-    ldr lr, [r4, #PCB_LR]
+    /* Restore CPSR into SPSR */
+    ldr r2, [r1, #PCB_CPSR]
+    msr spsr_cxsf, r2
 
-    add r1, r4, #PCB_R0
-    ldmia r1, {r0-r12}
+    /* Restore registers r0–r12 */
+    add r2, r1, #PCB_R0
+    ldmia r2, {r0-r12}
 
-    movs pc, lr
+    /* Restore SP and LR */
+    ldr sp, [r1, #PCB_SP]
+    ldr lr, [r1, #PCB_PC]   /* LR = entry point */
 
-
+    
+    movs pc, lr             /* switch mode + jump */
+// ============================================================
+// IRQ Handler
+// ============================================================
 irq_handler:
     sub lr, lr, #4
-    stmfd sp!, {r0-r12, lr}
+    stmfd sp!, {r0-r12, lr}        /* Save CPU registers */
 
-    /* Save current process */
+    /* Save current process state */
     ldr r0, =current_proc
     ldr r0, [r0]
     cmp r0, #0
     beq .Lno_save
 
     add r2, r0, #PCB_R0
-    ldr r1, [sp, #0]  ; str r1, [r2, #0]
-    ldr r1, [sp, #4]  ; str r1, [r2, #4]
-    ldr r1, [sp, #8]  ; str r1, [r2, #8]
-    ldr r1, [sp, #12] ; str r1, [r2, #12]
-    ldr r1, [sp, #16] ; str r1, [r2, #16]
-    ldr r1, [sp, #20] ; str r1, [r2, #20]
-    ldr r1, [sp, #24] ; str r1, [r2, #24]
-    ldr r1, [sp, #28] ; str r1, [r2, #28]
-    ldr r1, [sp, #32] ; str r1, [r2, #32]
-    ldr r1, [sp, #36] ; str r1, [r2, #36]
-    ldr r1, [sp, #40] ; str r1, [r2, #40]
-    ldr r1, [sp, #44] ; str r1, [r2, #44]
-    ldr r1, [sp, #48] ; str r1, [r2, #48]
+    stmia sp!, {r0-r12}             /* Save GPRs on stack */
+    ldmia sp!, {r0-r12}             /* Restore GPRs to PCB (simplified) */
 
-    ldr r1, [sp, #52]
-    str r1, [r0, #PCB_PC]
-
+    /* Save SP, LR, CPSR */
     mrs r3, cpsr
     bic r2, r3, #0x1F
     orr r2, r2, #0x13
@@ -143,81 +141,78 @@ irq_handler:
     str sp, [r0, #PCB_SP]
     str lr, [r0, #PCB_LR]
     msr cpsr_c, r3
-
     mrs r1, spsr
     str r1, [r0, #PCB_CPSR]
-
-    mov r1, #STATE_READY
-    str r1, [r0, #PCB_STATE]
+    mov r2, #STATE_READY
+    str r2, [r0, #PCB_STATE]
 
 .Lno_save:
-    and r4, sp, #4
-    sub sp, sp, r4
-    push {r4, lr}
+    /* Call C timer handler */
+    push {lr}
     bl timer_irq_handler
-    pop {r4, lr}
-    add sp, sp, r4
+    pop {lr}
 
     /* Restore next process */
     ldr r0, =next_proc
     ldr r0, [r0]
-
     mov r1, #STATE_RUNNING
     str r1, [r0, #PCB_STATE]
 
     ldr r1, [r0, #PCB_CPSR]
     msr spsr_cxsf, r1
-
     mrs r3, cpsr
     bic r2, r3, #0x1F
     orr r2, r2, #0x13
     msr cpsr_c, r2
+
     ldr sp, [r0, #PCB_SP]
     ldr lr, [r0, #PCB_LR]
     msr cpsr_c, r3
 
     ldr lr, [r0, #PCB_PC]
-
     add r1, r0, #PCB_R0
     ldmia r1, {r0-r12}
-
-    add sp, sp, #56
-
     movs pc, lr
 
-
+// ============================================================
+// Exception Stubs
+// ============================================================
 undefined_handler:
     push {r0, lr}
-    ldr  r0, =msg_undef
-    bl   os_uart_puts
-    pop  {r0, lr}
-    b hang
+    ldr r0, =msg_undef
+    bl  os_uart_puts
+    pop {r0, lr}
+    b hang_loop
 
 swi_handler:
 prefetch_handler:
 data_handler:
 fiq_handler:
-    b hang
+    b hang_loop
 
-// Memory
+// ============================================================
+// Memory helpers
+// ============================================================
 PUT32:
     str r1, [r0]
-    bx  lr
+    bx lr
 
 GET32:
     ldr r0, [r0]
-    bx  lr
+    bx lr
 
 enable_irq:
     mrs r0, cpsr
     bic r0, r0, #0x80
     msr cpsr_c, r0
-    bx  lr
+    bx lr
 
-
-    .section .rodata
+// ============================================================
+// Read-only data
+// ============================================================
+.section .rodata
 msg_fl_enter:
     .asciz "[first_launch] entering\n"
+
 msg_undef:
     .asciz "[UNDEF EXCEPTION]\n"
-    

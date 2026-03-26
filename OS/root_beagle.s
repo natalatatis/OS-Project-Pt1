@@ -118,7 +118,7 @@ first_launch:
 // IRQ handler
 irq_handler:
     sub lr, lr, #4 @ Return address
-    stmfd sp!, {r0-r12, lr} @ Save CPU registers
+    stmfd sp!, {r0-r12, lr} @Save CPU registers
 
 
     // Save current process
